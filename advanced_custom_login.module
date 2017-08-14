@@ -1,0 +1,125 @@
+<?php 
+
+/**
+ * Implements hook_menu().
+ */
+function advanced_custom_login_menu() {
+
+	$items = array();
+  $items['user/authenticate'] = array(
+    'title' => '',
+    'page callback' => '_advanced_custom_login',
+    'access arguments' => array('access content'),
+  );
+
+  $items['admin/config/services/advanced-custom-login'] = array(
+    'title' => 'AdvancEd Custom Login configuration',
+    'description' => 'Configure the eProve URL where we determine if users are to be added to the Extranet.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('advanced_custom_login_admin'),
+    'access arguments' => array('administer advanced custom login'),
+    'type' => MENU_NORMAL_ITEM,
+   );
+
+  return $items;
+}
+
+function advanced_custom_login_permission() {
+  return array(
+    'administer advanced custom login' => array(
+      'title' => t('Administer advanced custom login'),
+      'description' => t('Perform administration tasks for advanced custom login.'),
+    ),
+  );
+}
+
+function _advanced_custom_login() { 
+
+  $error_messages = array();
+  $success_messages = array();
+
+  if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+  	if (!empty($_SERVER['HTTP_BEARER'])) {
+  		$bearer = explode(' ', $_SERVER['HTTP_BEARER']);
+  		if ($bearer[0] == 'Basic') {
+  			$creds = explode(':', base64_decode($bearer[1]));
+  			$username = $creds[0];
+  			$pass = $creds[1];
+  			if($uid = user_authenticate($username, $pass)) {
+  				$eprove_url = variable_get('advanced_custom_login_eprove_url');
+  				if (empty($eprove_url)) {
+  					$error_messages[] = 'Please configure the eProve URL before proceeding.';
+  				} else {
+	  				// user_login_submit(array(), array('uid' => $uid));
+	  				$postdata = file_get_contents("php://input");
+	  				$headers = array('Content-Type' => 'application/json');
+						$ch = curl_init($eprove_url);
+						curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
+						curl_setopt($ch, CURLOPT_POSTFIELDS, $postdata);
+						curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+						curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+							'Content-Type: application/json',
+						));                                
+						                                                                                                                     
+						$result = curl_exec($ch);
+						$user = json_decode($result);
+						
+						if (empty($user->user)) {
+							$error_messages[] = $user->errorMessage;
+						} else {
+							$user_exists = user_load_by_mail($user->user->email);
+							if (!empty($user_exists)) {
+								$success_messages[] = 'User with the email ' . $user->user->email . ' already exists';
+							} else {
+								$success_messages[] = 'A new user with the email ' . $user->user->email . ' created';
+								$new_user = array(
+								  'name' => $user->user->userName,
+								  'mail' => $user->user->email,
+								  'pass' => $pass,
+								  'status' => 1,
+								  'access' => REQUEST_TIME,
+								  'roles' => array(), // No other roles than Authenticated
+								  //'roles' => array('10' => '10', '11' => '11'), // If you want to specify additional roles, the numbers are role_id's
+								);
+								user_save(NULL, $new_user);
+							}
+						}
+					}
+  			}
+  		} else {
+        $error_messages[] = 'Only Basic authentication is allowed.';
+  		}
+  	} else {
+  		$error_messages[] = 'The username and password should be base64encoded as a header "Bearer"';
+  	}
+  } else {
+  	$error_messages[] = 'Only POST methods are allowed.';
+  }
+  $message = array();
+  if (!empty($error_messages)) {
+    $message['type'] = 'error';
+    $message['message'] = $error_messages;
+  }
+  if (!empty($success_messages)) {
+    $message['type'] = 'success';
+    $message['message'] = $success_messages;
+  }
+  header('Content-Type: application/json');
+  print json_encode($message);
+  drupal_exit();
+}
+
+function advanced_custom_login_admin() {
+  $form = array();
+
+  $form['advanced_custom_login_eprove_url'] = array(
+    '#type' => 'textfield',
+    '#title' => t('eProve URL'),
+    '#default_value' => variable_get('advanced_custom_login_eprove_url'),
+    '#size' => 128,
+    '#maxlength' => 128,
+    '#required' => TRUE,
+  );
+
+  return system_settings_form($form);
+}

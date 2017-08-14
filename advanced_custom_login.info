@@ -1,0 +1,6 @@
+name = AdvancEd Custom Login
+description = Module providing endpoint to validate users with eProof
+core = 7.x
+version = 7.x-1.0
+package = custom
+configure = admin/config/services/advanced-custom-login
