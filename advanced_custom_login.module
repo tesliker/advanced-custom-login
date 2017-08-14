@@ -9,7 +9,7 @@ function advanced_custom_login_menu() {
   $items['user/authenticate'] = array(
     'title' => '',
     'page callback' => '_advanced_custom_login',
-    'access arguments' => array('access content'),
+    'access callback' => TRUE,
   );
 
   $items['admin/config/services/advanced-custom-login'] = array(
